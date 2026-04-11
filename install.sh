@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — Panel deploy + provisioning script
+# install.sh — Panel deploy + provisioning script for the panel
 #
 # ┌─ Run as a normal user ────────────────────────────────────────────────────┐
 # │  Copies source to /opt/panel (via sudo), installs PyQt5, writes an        │
