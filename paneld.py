@@ -26,13 +26,13 @@ import gui
 
 # ── Tunables — edit these freely ─────────────────────────────────────────────
 
-MENU_LIMIT       = 10              # Max commands shown in the tray context menu
-REFRESH_MS       = 5 * 60 * 1000  # Auto-refresh interval (milliseconds)
-DEFAULT_TERMINAL = "qterminal"     # Fallback if prefs.json has no "terminal" key
-ICON_COLOR       = "#89b4fa"       # Catppuccin blue — fallback icon fill
+MENU_LIMIT         = 10              # Max commands shown in the tray context menu
+REFRESH_MS         = 5 * 60 * 1000  # Auto-refresh interval (milliseconds)
+DEFAULT_TERMINAL   = "qterminal"     # Fallback if prefs.json has no "terminal" key
+ICON_COLOR         = "#89b4fa"       # Catppuccin blue — fallback icon fill
 
-TRAY_POLL_INTERVAL = 2             # seconds between tray availability checks
-TRAY_POLL_MAX      = 60            # seconds to wait before giving up entirely
+TRAY_POLL_INTERVAL = 0.1             # seconds between each tray availability probe
+TRAY_POLL_MAX      = 60              # seconds before giving up entirely
 
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -43,6 +43,13 @@ store.bootstrap()   # Ensure ~/.panel/ + defaults exist before anything else
 # ── Terminal emulator resolution ──────────────────────────────────────────────
 
 def _resolve_terminal() -> str:
+    """
+    Terminal priority:
+      1. prefs.json  "terminal" key
+      2. DEFAULT_TERMINAL constant
+      3. First available candidate from a fallback list
+    Raises RuntimeError if nothing is found on PATH.
+    """
     prefs     = store.load_prefs()
     preferred = prefs.get("terminal", DEFAULT_TERMINAL)
 
@@ -63,6 +70,7 @@ def _resolve_terminal() -> str:
 # ── Icon ──────────────────────────────────────────────────────────────────────
 
 def _make_icon(color: str = ICON_COLOR) -> QIcon:
+    """Render a minimal '>_' rounded-square icon as a QPixmap fallback."""
     px = QPixmap(22, 22)
     px.fill(Qt.transparent)
     painter = QPainter(px)
@@ -81,6 +89,10 @@ def _make_icon(color: str = ICON_COLOR) -> QIcon:
 
 
 def _tray_icon() -> QIcon:
+    """
+    Use the system theme icon when available; fall back to our painted square.
+    Theme name "utilities-terminal" is standard on FreeDesktop-compliant DEs.
+    """
     return QIcon.fromTheme("utilities-terminal", _make_icon())
 
 
@@ -88,18 +100,18 @@ def _tray_icon() -> QIcon:
 
 def _wait_for_tray(app: QApplication) -> bool:
     """
-    Qt's isSystemTrayAvailable() can return False even after the X11 tray
-    atom is set — the tray host needs a moment to finish registering with Qt.
-    Poll here in-process rather than dying immediately.
-    Returns True if the tray became available, False if we timed out.
+    Qt's isSystemTrayAvailable() returns False if the tray host hasn't
+    finished registering yet — even when lxqt-panel is already running.
+    Poll in small increments, pumping the Qt event loop each tick so the
+    application stays responsive.  Returns True when the tray is ready,
+    False if TRAY_POLL_MAX seconds pass with no tray in sight.
     """
-    elapsed = 0
+    deadline = time.monotonic() + TRAY_POLL_MAX
     while not QSystemTrayIcon.isSystemTrayAvailable():
-        if elapsed >= TRAY_POLL_MAX:
+        if time.monotonic() >= deadline:
             return False
-        app.processEvents()          # keep Qt alive during the wait
+        app.processEvents()      # keep Qt alive — never starve the event loop
         time.sleep(TRAY_POLL_INTERVAL)
-        elapsed += TRAY_POLL_INTERVAL
     return True
 
 
@@ -163,6 +175,11 @@ class PanelDaemon(QSystemTrayIcon):
     # ── Dispatch ──────────────────────────────────────────────────────────────
 
     def _run(self, full_command: str):
+        """
+        Resolve the user's preferred terminal from prefs at dispatch time
+        (not at startup) so pref changes take effect without a restart.
+        Runs:  <terminal> -e <full_command>
+        """
         try:
             term = _resolve_terminal()
             env  = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}

@@ -3,15 +3,15 @@
     "display": "kobold",
     "full": "bash /home/kim/Desktop/kobold.sh",
     "terminal": false,
-    "uses": 9,
-    "last_used": "2026-04-10T06:43:43"
+    "uses": 10,
+    "last_used": "2026-04-10T07:27:46"
   },
   {
-    "display": "Silly Tavern",
+    "display": "Silly_Tavern",
     "full": "bash /home/kim/bin/start-sillytavern.sh",
     "terminal": false,
-    "uses": 8,
-    "last_used": "2026-04-10T06:44:43"
+    "uses": 9,
+    "last_used": "2026-04-10T07:28:34"
   },
   {
     "display": "webstack",

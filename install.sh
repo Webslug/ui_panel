@@ -11,7 +11,6 @@ INSTALL_DIR="/opt/panel"
 AUTOSTART_DIR="$HOME/.config/autostart"
 DESKTOP_FILE="$AUTOSTART_DIR/panel.desktop"
 DAEMON="$INSTALL_DIR/paneld.py"
-LAUNCHER="$INSTALL_DIR/panel_launch.sh"
 
 RED='\033[1;31m'
 GREEN='\033[1;32m'
@@ -56,42 +55,7 @@ fi
 sudo chmod 755 "$INSTALL_DIR/paneld.py"
 echo -e "${GREEN}  Source verified in ${INSTALL_DIR}.${RESET}"
 
-# ── 2. Write the delayed launcher wrapper ─────────────────────────────────────
-# LXQt raises its system tray asynchronously at login.
-# Launching paneld.py immediately via .desktop races the tray and loses.
-# This wrapper sleeps until the wall is built, then deploys the soldier.
-
-echo -e "${YELLOW}Writing launcher wrapper → ${LAUNCHER}…${RESET}"
-sudo tee "$LAUNCHER" > /dev/null <<'EOF'
-#!/usr/bin/env bash
-# panel_launch.sh — Delayed autostart wrapper for paneld.py
-# Waits for the system tray to be available before launching the daemon.
-# Called by the .desktop autostart entry — do not invoke directly.
-
-DAEMON="/opt/panel/paneld.py"
-MAX_WAIT=30   # seconds before giving up
-INTERVAL=2    # polling interval in seconds
-
-elapsed=0
-while ! xprop -root _NET_SYSTEM_TRAY_S0 &>/dev/null; do
-    if (( elapsed >= MAX_WAIT )); then
-        # Tray never appeared — give it one last blind attempt anyway
-        break
-    fi
-    sleep "$INTERVAL"
-    (( elapsed += INTERVAL ))
-done
-
-# One final grace-period sleep so the tray host can finish registering
-sleep 2
-
-exec python3 "$DAEMON"
-EOF
-
-sudo chmod 755 "$LAUNCHER"
-echo -e "${GREEN}  Launcher wrapper written and made executable.${RESET}"
-
-# ── 3. Python deps ────────────────────────────────────────────────────────────
+# ── 2. Python deps ────────────────────────────────────────────────────────────
 echo -e "${YELLOW}Installing PyQt5…${RESET}"
 if command -v apt-get &>/dev/null; then
     sudo apt-get install -y python3-pyqt5 >/dev/null
@@ -101,7 +65,7 @@ else
     echo -e "${GREEN}  PyQt5 installed via pip.${RESET}"
 fi
 
-# ── 4. Per-user autostart .desktop entry ──────────────────────────────────────
+# ── 3. Per-user autostart .desktop entry ──────────────────────────────────────
 mkdir -p "$AUTOSTART_DIR"
 
 cat > "$DESKTOP_FILE" <<EOF
@@ -109,7 +73,7 @@ cat > "$DESKTOP_FILE" <<EOF
 Type=Application
 Name=Panel Daemon
 Comment=Quick-command system tray applet
-Exec=${LAUNCHER}
+Exec=python3 ${DAEMON}
 Icon=utilities-terminal
 Hidden=false
 NoDisplay=false
@@ -120,7 +84,7 @@ EOF
 echo -e "${GREEN}  Autostart entry written → ${DESKTOP_FILE}${RESET}"
 echo -e "${CYAN}  Re-run install.sh as any other user to wire up their autostart.${RESET}"
 
-# ── 5. Optional: launch now ───────────────────────────────────────────────────
+# ── 4. Optional: launch now ───────────────────────────────────────────────────
 echo
 read -rp "Launch panel daemon now? [y/N] " LAUNCH
 if [[ "${LAUNCH,,}" == "y" ]]; then
