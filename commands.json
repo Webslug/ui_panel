@@ -1,0 +1,23 @@
+[
+  {
+    "display": "kobold",
+    "full": "bash /home/kim/Desktop/kobold.sh",
+    "terminal": false,
+    "uses": 9,
+    "last_used": "2026-04-10T06:43:43"
+  },
+  {
+    "display": "Silly Tavern",
+    "full": "bash /home/kim/bin/start-sillytavern.sh",
+    "terminal": false,
+    "uses": 8,
+    "last_used": "2026-04-10T06:44:43"
+  },
+  {
+    "display": "webstack",
+    "full": "bash /home/kim/Desktop/webstack.sh",
+    "terminal": false,
+    "uses": 5,
+    "last_used": "2026-04-10T06:43:48"
+  }
+]
