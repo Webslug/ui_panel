@@ -15,7 +15,6 @@ from datetime import datetime
 PANEL_DIR    = os.path.join(os.path.expanduser("~"), ".panel")
 STORE_PATH   = os.path.join(PANEL_DIR, "commands.json")
 PREFS_PATH   = os.path.join(PANEL_DIR, "prefs.json")
-TOP_N        = 10   # Default — overridden by MENU_LIMIT in paneld.py
 
 # ── Default records ───────────────────────────────────────────────────────────
 
@@ -30,7 +29,8 @@ _DEFAULT_COMMANDS = [
 ]
 
 _DEFAULT_PREFS = {
-    "terminal": "qterminal",
+    "terminal":   "qterminal",
+    "menu_limit": 10,
     # Future keys: "theme", "icon_color", "lancedb_path", etc.
 }
 
@@ -155,7 +155,7 @@ def load_all() -> list:
     return records
 
 
-def get_top_n(n: int = TOP_N) -> list:
+def get_top_n(n: int = _DEFAULT_PREFS["menu_limit"]) -> list:
     """Return the top-N records for menu display."""
     return load_all()[:n]
 

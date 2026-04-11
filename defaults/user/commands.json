@@ -1,0 +1,9 @@
+[
+  {
+    "display":   "Hello World",
+    "full":      "bash -c \"echo Hello World\"",
+    "terminal":  false,
+    "uses":      0,
+    "last_used": null
+  }
+]

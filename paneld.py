@@ -7,6 +7,8 @@ System tray applet for LXQt/Lubuntu.
 Refreshes command list every REFRESH_MS milliseconds via QTimer.
 
 User data lives in ~/.panel/ — multi-user safe, kim-free.
+menu_limit is read from the user's own prefs.json so each user controls
+their own menu depth without touching shared config.
 """
 
 import sys
@@ -26,7 +28,6 @@ import gui
 
 # ── Tunables — edit these freely ─────────────────────────────────────────────
 
-MENU_LIMIT         = 10              # Max commands shown in the tray context menu
 REFRESH_MS         = 5 * 60 * 1000  # Auto-refresh interval (milliseconds)
 DEFAULT_TERMINAL   = "qterminal"     # Fallback if prefs.json has no "terminal" key
 ICON_COLOR         = "#89b4fa"       # Catppuccin blue — fallback icon fill
@@ -65,6 +66,23 @@ def _resolve_terminal() -> str:
         f"Preferred terminal '{preferred}' not found, and no fallback is installed.\n"
         "Install one:  sudo apt install qterminal"
     )
+
+
+# ── Menu limit ────────────────────────────────────────────────────────────────
+
+def _resolve_menu_limit() -> int:
+    """
+    Read menu_limit from the user's own prefs.json at call time.
+    Falls back to the store default (10) if the key is absent or non-integer.
+    Called fresh on every menu build so a pref edit takes effect without restart.
+    """
+    prefs = store.load_prefs()
+    raw   = prefs.get("menu_limit", store._DEFAULT_PREFS["menu_limit"])
+    try:
+        limit = int(raw)
+        return limit if limit > 0 else store._DEFAULT_PREFS["menu_limit"]
+    except (TypeError, ValueError):
+        return store._DEFAULT_PREFS["menu_limit"]
 
 
 # ── Icon ──────────────────────────────────────────────────────────────────────
@@ -140,7 +158,7 @@ class PanelDaemon(QSystemTrayIcon):
 
     def _build_menu(self):
         self._menu.clear()
-        records = store.get_top_n(MENU_LIMIT)
+        records = store.get_top_n(_resolve_menu_limit())
 
         if not records:
             empty = QAction("(no commands — double-click to add)", self._menu)

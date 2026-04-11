@@ -2,5 +2,7 @@ __pycache__/
 backup/
 .git/
 /push.sh
+/install_all.sh
 *.zip
 *.rar
+*.txt
