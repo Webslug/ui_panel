@@ -9,12 +9,17 @@ Refreshes command list every REFRESH_MS milliseconds via QTimer.
 User data lives in ~/.panel/ — multi-user safe, kim-free.
 menu_limit is read from the user's own prefs.json so each user controls
 their own menu depth without touching shared config.
+
+Single-instance enforced via a PID lockfile at ~/.panel/paneld.pid.
+Stale locks (dead PID) are broken automatically so a crashed daemon
+never bricks the next login.
 """
 
 import sys
 import subprocess
 import shutil
 import os
+import signal
 import time
 
 from PyQt5.QtWidgets import (
@@ -34,6 +39,59 @@ ICON_COLOR         = "#89b4fa"       # Catppuccin blue — fallback icon fill
 
 TRAY_POLL_INTERVAL = 0.1             # seconds between each tray availability probe
 TRAY_POLL_MAX      = 60              # seconds before giving up entirely
+
+# ── PID lockfile ──────────────────────────────────────────────────────────────
+
+_PID_FILE = os.path.join(os.path.expanduser("~"), ".panel", "paneld.pid")
+
+
+def _acquire_lock() -> bool:
+    """
+    Claim the PID lockfile for this process.
+
+    - If no lockfile exists                   → write our PID, proceed.
+    - If lockfile exists but PID is dead/stale → overwrite with our PID, proceed.
+    - If lockfile exists and PID is alive      → another instance is running; abort.
+
+    Returns True if the lock was acquired, False if a live instance already holds it.
+    """
+    os.makedirs(os.path.dirname(_PID_FILE), exist_ok=True)
+
+    if os.path.exists(_PID_FILE):
+        try:
+            with open(_PID_FILE, "r") as fh:
+                existing_pid = int(fh.read().strip())
+        except (ValueError, OSError):
+            existing_pid = None  # corrupt file — treat as stale
+
+        if existing_pid and existing_pid != os.getpid():
+            # os.kill(pid, 0) probes liveness without sending a real signal.
+            # Raises ProcessLookupError if the PID is dead, PermissionError if
+            # alive but owned by another user (counts as alive for our purposes).
+            try:
+                os.kill(existing_pid, 0)
+                # Reached here → process is alive; another instance is running.
+                return False
+            except ProcessLookupError:
+                pass  # stale lock — ghost PID, safe to overwrite
+            except PermissionError:
+                return False  # alive, different owner — stand down
+
+    # Write our own PID into the lockfile.
+    with open(_PID_FILE, "w") as fh:
+        fh.write(str(os.getpid()))
+    return True
+
+
+def _release_lock() -> None:
+    """Remove the PID lockfile on clean exit."""
+    try:
+        if os.path.exists(_PID_FILE):
+            with open(_PID_FILE, "r") as fh:
+                if int(fh.read().strip()) == os.getpid():
+                    os.unlink(_PID_FILE)
+    except (ValueError, OSError):
+        pass
 
 
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -232,8 +290,27 @@ class PanelDaemon(QSystemTrayIcon):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
+    # ── Single-instance gate ──────────────────────────────────────────────────
+    if not _acquire_lock():
+        # Silent exit — no dialog, no noise. A duplicate is not an error worth
+        # bothering the user about; it just stands down quietly.
+        sys.exit(0)
+
+    # Register lock release for both clean quit and SIGTERM (logout/kill).
+    import atexit
+    atexit.register(_release_lock)
+    signal.signal(signal.SIGTERM, lambda *_: (app.quit() if 'app' in dir() else sys.exit(0)))
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    # Wire SIGTERM properly now that app exists.
+    signal.signal(signal.SIGTERM, lambda *_: app.quit())
+
+    # Also handle SIGHUP (sent by some session managers on logout).
+    signal.signal(signal.SIGHUP, lambda *_: app.quit())
+
+    app.aboutToQuit.connect(_release_lock)
 
     if not _wait_for_tray(app):
         QMessageBox.critical(
@@ -241,6 +318,7 @@ def main():
             f"System tray did not become available after {TRAY_POLL_MAX}s.\n"
             "Is lxqt-panel running?"
         )
+        _release_lock()
         sys.exit(1)
 
     daemon = PanelDaemon(app)
