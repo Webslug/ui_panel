@@ -6,3 +6,7 @@ backup/
 *.zip
 *.rar
 *.txt
+defaults/kim/
+defaults/emily/
+defaults/teacher/
+
