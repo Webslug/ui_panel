@@ -46,15 +46,6 @@ _PID_FILE = os.path.join(os.path.expanduser("~"), ".panel", "paneld.pid")
 
 
 def _acquire_lock() -> bool:
-    """
-    Claim the PID lockfile for this process.
-
-    - If no lockfile exists                   → write our PID, proceed.
-    - If lockfile exists but PID is dead/stale → overwrite with our PID, proceed.
-    - If lockfile exists and PID is alive      → another instance is running; abort.
-
-    Returns True if the lock was acquired, False if a live instance already holds it.
-    """
     os.makedirs(os.path.dirname(_PID_FILE), exist_ok=True)
 
     if os.path.exists(_PID_FILE):
@@ -62,22 +53,27 @@ def _acquire_lock() -> bool:
             with open(_PID_FILE, "r") as fh:
                 existing_pid = int(fh.read().strip())
         except (ValueError, OSError):
-            existing_pid = None  # corrupt file — treat as stale
+            existing_pid = None
 
         if existing_pid and existing_pid != os.getpid():
-            # os.kill(pid, 0) probes liveness without sending a real signal.
-            # Raises ProcessLookupError if the PID is dead, PermissionError if
-            # alive but owned by another user (counts as alive for our purposes).
             try:
                 os.kill(existing_pid, 0)
-                # Reached here → process is alive; another instance is running.
-                return False
+                # PID is alive — but is it actually us?
+                cmdline_path = f"/proc/{existing_pid}/cmdline"
+                if os.path.exists(cmdline_path):
+                    with open(cmdline_path, "rb") as fh:
+                        cmdline = fh.read().replace(b"\x00", b" ").decode(errors="replace")
+                    if "paneld" not in cmdline:
+                        pass  # recycled PID, not our process — safe to overwrite
+                    else:
+                        return False  # genuinely alive paneld instance
+                else:
+                    return False  # can't read cmdline, assume alive
             except ProcessLookupError:
-                pass  # stale lock — ghost PID, safe to overwrite
+                pass  # stale
             except PermissionError:
-                return False  # alive, different owner — stand down
+                return False  # alive, different owner
 
-    # Write our own PID into the lockfile.
     with open(_PID_FILE, "w") as fh:
         fh.write(str(os.getpid()))
     return True
